@@ -3,111 +3,237 @@
 #include <ctype.h>
 #include <string.h>
 #include <math.h>
+#include <stdbool.h>
 
-#include <unistd.h>
-#include <pthread.h>
+#define FILE_MAX = 16;
 // Compilation : gcc -Wall -std=c99 exemple.c utils.c
 // Ceci est un exemple d'utilisation de util.c
-
-struct processus {
+typedef struct processus {
     int pid;
-    int arr;
-    int unit[8];
-};
+    int tpsArrive;
+    int tpsCPU[16];
+    int tpsTotal;
+} Processus;
 
-struct file {
+typedef struct file {
     int quantum;
-    int use[8];
-};
+    Processus *ordreProcessus[16];
+    int nbPro;
+    int num;
+} File;
 
-struct file f[3];
 
-struct processus p[4];
+File f[3];
 
 int compare (const void * a, const void * b) {
-   struct processus *p1 = (struct processus * )a;
-   struct processus *p2 = (struct processus * )b;
-   if(p1->arr == p2->arr) {
-       return p1->pid = p2->pid;
-   }
-   return p1->arr - p2->arr;
+    Processus *p1 = (Processus * )a;
+    Processus *p2 = (Processus * )b;
+    if(p1->tpsArrive == p2->tpsArrive) {
+        return p1->pid - p2->pid;
+    }
+    return p1->tpsArrive - p2->tpsArrive;
 }
 
-int gestionEntree(char const *argv[]) {
+void afficher(Processus *p, int nbPro) {
 
-    int c, i = 0, j = 0, e = 0, nombre = 0, neg = 0;
-    const char *fileName = "test2.txt";
+    for(int i = 0 ; i < nbPro ; i++){
+        printf("PID : %d \t|\t ", p[i].pid);
+        printf("ARR : %d \t|\t Info :", p[i].tpsArrive);
+        int sizeU = sizeof(p[i].tpsCPU) / sizeof(int);
+        for(int j = 0 ; j < sizeU ; j++) {
+            if(p[i].tpsCPU[j] != 0) {
+                printf(" %d",p[i].tpsCPU[j]);
+            }
+        }
+        printf("\n");
+    }
+}
 
-    FILE *file;
-    file = fopen(fileName, "r");/*argv[3]*/
-    if (file) {
+void gestionEntree(Processus *p, const char *fileName) {
+    int c, i = 0, j = 0, e = 0, nombre = 0, neg = 0, nbTotal = 0;
 
-        while ((c = getc(file)) != EOF) {
+    FILE *fichier;
+    fichier = fopen(fileName, "r");
+    //printf("Q1 : %d | Q2 = %d\n", q1,q2);
+    if (fichier) {
+        while ((c = getc(fichier)) != EOF) {
 
             if (c == '\n') {
-                p[i].unit[j-2] = (neg) ? -nombre : nombre;
+                p[i].tpsCPU[j-2] = nbTotal + nombre;
                 i++;
-                j = nombre = e = neg = 0;
-
+                j = nombre = e = neg = nbTotal = 0;
             } else if (c == ' ') {
-
                 if(j == 0) {
                     p[i].pid = nombre;
-                } else if (j == 0) {
-                    p[i].arr = nombre;
+                    j++;
+                } else if (j == 1) {
+                    p[i].tpsArrive = nombre;
+                    j++;
+                } else if(neg) {
+                    p[i].tpsCPU[j-2] = (neg) ? -nombre : nombre;
+                    j++;
+                    nbTotal = 0;
                 } else {
-                    p[i].unit[j-2] = (neg) ? -nombre : nombre;
+                    nbTotal += nombre;
                 }
                 nombre = e = neg = 0;
-                j++;
-
             } else if (isdigit((int)c)) {
                 nombre = (nombre*(10*e))+((int)c-48);
-                //printf("%d ",nombre);
                 e++;
-
             } else if (c == '-') {
+                p[i].tpsCPU[j-2] = nbTotal;
+                nbTotal = 0;
+                j++;
                 neg = 1;
             }
-            //printf("Unit: %d\n",p[i].unit[j-2]);
-        }
-        p[i].unit[j-2] = (neg) ? -nombre : nombre;
-        fclose(file);
-    }
-    if(i > 0) {
-        qsort(p,2,sizeof(struct processus),compare);
-    }
 
+        }
+        p[i].tpsCPU[j-2] = nbTotal+nombre;
+        fclose(fichier);
+    }
+}
+
+void creationQueue(File *f, int nFile, Processus *p, int nbPro) {
+    if(nbPro > 0) {
+        for(int i = 0 ; i < nbPro ; i++) {
+            f[0].ordreProcessus[i] = &p[i];
+            f[0].nbPro++;
+        }
+    }
+    printf("\n");
+}
+
+void changementFile(File *file) {
+    /*File *nextFile = (file == f+1) ? &f[2] : &f[1];
+    (unsigned) int t = &file->ordreProcessus[0];
+    printf("p: %p\n",nextFile->ordreProcessus);
+    printf("p: %p\n",&f[1].ordreProcessus);
+    printf("------------------p4 : %p\n",p);
+    nextFile->ordreProcessus[nextFile->nbPro] = file->ordreProcessus[file->nbPro];
+    printf("------------------p4 : %p\n",nextFile->ordreProcessus);
+    printf("pa: %d\n",f[1].ordreProcessus[0]);*/
+}
+
+int defiler(File *f) {
+    int i = 0, j = 0;
+    while(f->ordreProcessus[i] != NULL ) {
+        f->ordreProcessus[i] = f->ordreProcessus[i+1];
+        i++;
+    }
+    f->nbPro--;
     return i;
 }
 
-void creationQueue() {
+bool avancerTpsCPU(Processus *p) {
+    int i = 0;
+    printf("p = %d\n",p->tpsCPU[1]);
+    while(p->tpsCPU[i] != 0 ) {
+        p->tpsCPU[i] = p->tpsCPU[i+1];
+        i++;
+    }
+    printf("p = %d\n",p->tpsCPU[0]);
+    return i == 0;
 }
 
-int main (int argc, char const *argv[]) {
-    if(1/*argc == 4*/) {
-        int q1 = 45;
-        f[0].quantum = 5;/*atoi(argv[1])*/
-        f[1].quantum = 10;/*atoi(argv[2])*/
-        int sizeP = gestionEntree(argv);
-        printf("%d\n",p[0].pid);
+void* gestionCPU(File *file, Processus *p, int nbPro) {
+    int i = 0, j = 0;
+    int *tpsPro;
 
-        for(int i = 0 ; i < sizeP ; i++){
-            printf("PID : %d \t|\t ", p[i].pid);
-            printf("ARR : %d \t|\t Info :", p[i].arr);
+    printf("\nFILE : %d\t",file->num);
+    printf("Processus : ");
+    while(file->ordreProcessus[j] != NULL ) {
+        printf("%d | ", file->ordreProcessus[j]->pid);
+        j++;
+    }
+    printf("\n\n");
+    j=0;
 
-            int sizeU = sizeof(p[0].unit)/sizeof(int);
-            for(int j = 0 ; j < sizeU ; j++) {
-                if(p[i].unit[j] != 0) {
-                    printf(" %d",p[i].unit[j]);
+    while(file->ordreProcessus[0] != NULL) {
+        tpsPro = &file->ordreProcessus[0]->tpsCPU[0];
+        printf("Traitement de : %d\n",file->ordreProcessus[0]->pid);
+        if(*tpsPro < 0) {
+             avancerTpsCPU(file->ordreProcessus[0]);
+             if(file == f+2 && *tpsPro > 0) {
+                *tpsPro = 0;
+            } else {
+                if(file == f) {
+                    f[1].ordreProcessus[f[1].nbPro] = file->ordreProcessus[0];
+                    f[1].nbPro++;
+                } else {
+                    f[2].ordreProcessus[f[2].nbPro] = file->ordreProcessus[0];
+                    f[2].nbPro++;
                 }
+                defiler(file);
             }
-            printf("\n");
+        } else if(*tpsPro <= file->quantum ) {
+            printf("tpsPro : %d | Quantum : %d\n",*tpsPro, file->quantum );
+            avancerTpsCPU(file->ordreProcessus[0]);
+            defiler(file);
+        } else {
+            *tpsPro -= file->quantum;
+            //printf("-tpsPro : %d\n",*tpsPro);
+            if(file == f+2 && *tpsPro > 0) {
+                *tpsPro = 0;
+            } else {
+                if(file == f) {
+                    f[1].ordreProcessus[f[1].nbPro] = file->ordreProcessus[0];
+                    f[1].nbPro++;
+                } else {
+                    f[2].ordreProcessus[f[2].nbPro] = file->ordreProcessus[0];
+                    f[2].nbPro++;
+                }
+                defiler(file);
+            }
+
+        }
+        printf("---------------NOUVEAU---------------\n");
+        afficher(p, nbPro);
+        printf("#####################################\n");
+    }
+}
+
+void gestionQueue(File *f, Processus *p, int nbPro) {
+    while(f[0].ordreProcessus[0] != NULL || f[1].ordreProcessus[0] != NULL || f[2].ordreProcessus[0] != NULL) {
+        gestionCPU(&f[0],p,nbPro);
+        gestionCPU(&f[1],p,nbPro);
+        gestionCPU(&f[2],p,nbPro);
+
+    }
+}
+
+
+
+int main (int argc, char const *argv[]) {
+
+    if(1 == 1/*argc == 4*/) {
+
+        f[0].quantum = atoi(argv[1]);
+        f[1].quantum = atoi(argv[2]);
+        f[0].nbPro = f[1].nbPro = f[2].nbPro = 0;
+        f[0].num = 1;
+        f[1].num = 2;
+        f[2].num = 3;
+        FILE *fichier;
+        const char *fileName = argv[3];
+        fichier = fopen(fileName, "r");
+        char c;
+        int nbPro = 1, tTotalCPU;
+        struct processus* p;
+
+        while ((c = getc(fichier)) != EOF) {
+            if (c == '\n') {
+                nbPro++;
+            }
         }
 
-        creationQueue();
-
-
+        p = malloc(nbPro * sizeof(Processus));
+        gestionEntree(p, fileName);
+        afficher(p, nbPro);
+        qsort(p,nbPro,sizeof(Processus),compare);
+        tTotalCPU = p[0].tpsArrive;
+        creationQueue(f, 0, p, nbPro);
+        gestionQueue(f,p, nbPro);
+        afficher(p, nbPro);
 
         //Vérification de l'entrée
         if(0) {
@@ -117,17 +243,13 @@ int main (int argc, char const *argv[]) {
         } else if (0){
             print_erreur(3);
         } else {
-            /*printf("\n");
-            int sizeP = sizeof(p) / sizeof(struct processus);
+            printf("\n");
+            int sizeP = sizeof(p) / sizeof(Processus);
 
-            for (int i = 0 ; i < sizeP ; i++) {
-                int sizeU = sizeof(p[i].unit) / sizeof(int);
-                for(int j = 0 ; j < sizeU ; j++) {
-                    print_element(p[i].pid,p[i].arr,p[i].unit[j]);
-                }
-            }*/
+            for(int i = 0 ; i < sizeP ; i++){
+                print_element(p[i].pid,p[i].tpsArrive,0);
+            }
         }
-        //free(p);
         return 0;
     } else {
         print_erreur(3);
